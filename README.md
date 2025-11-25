@@ -1,5 +1,12 @@
 # Pharma-Payments-by-College 
 
+**Summary of files**
+1_Cleaning_MF202508025.R: this is the original R code used to clean the original dataset.
+2_Results_ZD20251125.R: this is the final R code used for the analysis.
+3_Results_ZD20251125_Quatro.qmd: this is the same as the analysis code but in Quatro format
+ahpra_202324.xlsx: this is the 2023/24 AHPRA Specialist Workforce counts. It is required in the results code.
+payments_cleaned_updated.csv: this is the final dataset for analysis. It is required in the results code.
+
 **Supplementary Methods**
 
 Data on payments to health professionals from November 2019 to October 2024 were downloaded from the centralised Medicines Australia repository. (1) These reports include individual payment records with fields for company name, practitioner name, healthcare professional type, practice address, service type, event type, payment recipient, registration fees, travel costs, fees for service, and reporting period. These data were merged with legacy reports (October 2015–October 2019) obtained from the University of Sydney repository. (2)
