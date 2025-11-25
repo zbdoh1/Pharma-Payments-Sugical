@@ -73,7 +73,7 @@ payments <- payments %>%
 # Nuclear medicine recodes (overlapping specialties by college)
 nuc_med <- payments %>%
   filter(specialty == "NUCLEAR MEDICINE") %>%
-  select(name, address) %>%
+  select(name) %>%
   distinct(name) %>%
   mutate(
     speciality_new = case_when(
@@ -562,3 +562,4 @@ figure1 <- final_tbl_2 %>%
 
 figure1
 ```
+
