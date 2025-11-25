@@ -1,0 +1,564 @@
+---
+title: "Payments analysis by college group"
+author: "Zak Doherty"
+date: "November 2025"
+format:
+  html:
+    toc: true
+    number-sections: false
+execute:
+  echo: true
+  message: false
+  warning: false
+---
+
+## Overview
+
+This quatro document:
+
+-   Loads cleaned Medicines Australia payments data
+-   Cleans specialty / profession classifications
+-   Allocates specialties to college groups
+-   WPI-adjusts payment amounts\
+-   Produces:
+    -   **Table 1**: Summary of payments by specialty group
+    -   **Figure 1**: Proportion of fellows receiving ≥1 payment by college
+
+## Setup
+
+```{r}
+# -------------------------------------------------------------------
+# Load packages
+# -------------------------------------------------------------------
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(readxl)
+  library(stringr)
+  library(lubridate)
+  library(knitr)
+  library(scales)
+  library(binom)
+  library(writexl)
+  library(DescTools)
+  library(RColorBrewer)
+  library(ggrepel)
+  library(gt)
+  library(readabs)
+})
+```
+
+# Load data
+
+-   Uses the file "payments_cleaned_updated"
+
+-   This derived from the cleaning R code
+
+```{r}
+payments <- read_csv("payments_cleaned_updated.csv")
+```
+
+# 
+
+# Data Cleaning
+
+-   Nuclear Medicine Physicians had to be allocated to RANZCR or RACP. This was done following an individual level search.
+
+-   There were also a number of Medical Practitioners coded as nurses or pharmacists. This has been rectified.
+
+```{r}
+# Remove one non-doctor
+payments <- payments %>%
+  filter(name != "Jones, Karen")
+
+# Nuclear medicine recodes (overlapping specialties by college)
+nuc_med <- payments %>%
+  filter(specialty == "NUCLEAR MEDICINE") %>%
+  select(name, address) %>%
+  distinct(name) %>%
+  mutate(
+    speciality_new = case_when(
+      name == "Chikatamarla, Venkata" ~ "RANZCR",
+      name == "Emmett, Louise"        ~ "RACP_ADULT",
+      name == "Lenzo, Nat"            ~ "RACP_ADULT",
+      name == "Rowe, Christopher"     ~ "RACP_ADULT",
+      name == "Ahluwalia, Uday"       ~ "RACP_ADULT",
+      name == "Bernard, Elizabeth"    ~ "RACP_ADULT",
+      name == "Dhiantravan, Nattakorn"~ "RACP_ADULT",
+      name == "Groombridge, Laura K." ~ "RACP_ADULT",
+      name == "Hicks, Rodney"         ~ "RACP_ADULT",
+      name == "Hofman, Michael"       ~ "RACP_ADULT",
+      name == "Hsiao, Edward"         ~ "RANZCR",
+      name == "Kong, Grace"           ~ "RACP_ADULT",
+      name == "Law, Andrew"           ~ "RANZCR",
+      name == "Patterson, David"      ~ "RACP_ADULT",
+      name == "Pocock, Nicholas"      ~ "RACP_ADULT",
+      name == "Singh, Dalveer"        ~ "RANZCR",
+      name == "Thomas, Paul Anthony"  ~ "RANZCR",
+      name == "Wong, Joseph C."       ~ "RACP_ADULT",
+      name == "Yung, Grace"           ~ "RACP_ADULT"
+    )
+  )
+
+# Recode original specialty labels for these doctors
+payments <- payments %>%
+  mutate(
+    specialty = case_when(
+      name == "Chikatamarla, Venkata" ~ "NUCLEAR MEDICINE RADIOLOGY",
+      name == "Emmett, Louise"        ~ "NUCLEAR MEDICINE RACP",
+      name == "Lenzo, Nat"            ~ "NUCLEAR MEDICINE RACP",
+      name == "Rowe, Christopher"     ~ "NUCLEAR MEDICINE RACP",
+      name == "Ahluwalia, Uday"       ~ "NUCLEAR MEDICINE RACP",
+      name == "Bernard, Elizabeth"    ~ "NUCLEAR MEDICINE RACP",
+      name == "Dhiantravan, Nattakorn"~ "NUCLEAR MEDICINE RACP",
+      name == "Groombridge, Laura K." ~ "NUCLEAR MEDICINE RACP",
+      name == "Hicks, Rodney"         ~ "NUCLEAR MEDICINE RACP",
+      name == "Hofman, Michael"       ~ "NUCLEAR MEDICINE RACP",
+      name == "Hsiao, Edward"         ~ "NUCLEAR MEDICINE RADIOLOGY",
+      name == "Kong, Grace"           ~ "NUCLEAR MEDICINE RACP",
+      name == "Law, Andrew"           ~ "NUCLEAR MEDICINE RADIOLOGY",
+      name == "Patterson, David"      ~ "NUCLEAR MEDICINE RACP",
+      name == "Pocock, Nicholas"      ~ "NUCLEAR MEDICINE RACP",
+      name == "Singh, Dalveer"        ~ "NUCLEAR MEDICINE RADIOLOGY",
+      name == "Thomas, Paul Anthony"  ~ "NUCLEAR MEDICINE RADIOLOGY",
+      name == "Wong, Joseph C."       ~ "NUCLEAR MEDICINE RACP",
+      name == "Yung, Grace"           ~ "NUCLEAR MEDICINE RACP",
+      TRUE                            ~ specialty
+    )
+  )
+
+  # --- INCORRECT PROFESSION ALLOCATION FIXES -----------------------------------
+payments <- payments %>%
+  mutate(
+    profession = case_when(
+      name == "Dunn, Anna"         & profession == "Nurses"      ~ "Medical Professions",
+      name == "Shahzad, Anwar"     & profession == "Nurses"      ~ "Medical Professions",
+      name == "Bailey, Christopher"& profession == "Nurses"      ~ "Medical Professions",
+      name == "McMahon, Lawrence"  & profession == "Nurses"      ~ "Medical Professions",
+      name == "Moore, Melissa"     & profession == "Nurses"      ~ "Medical Professions",
+      name == "Wang, Ying"         & profession == "Nurses"      ~ "Medical Professions",
+      name == "Nguyen, Yvonne"     & profession == "Pharmacists" ~ "Medical Professions",
+      TRUE ~ profession
+    )
+  )
+
+```
+
+# Allocation of specialties to colleges
+
+-   Specialties were allocated based on the listed college as per AHPRA.
+
+```{r}
+RACP_ADULT <- c(
+  "ADDICTION MEDICINE", "CARDIOLOGY", "CLINICAL GENETICS", "CLINICAL PHARMACOLOGY",
+  "ENDOCRINOLOGY", "GASTROENTEROLOGY AND HEPATOLOGY", "GENERAL MEDICINE",
+  "GERIATRIC MEDICINE", "HAEMATOLOGY AND ONCOLOGY", "INFECTIOUS DISEASES",
+  "IMMUNOLOGY AND ALLERGY", "MICROBIOLOGY", "NUCLEAR MEDICINE RACP",
+  "NEPHROLOGY", "NEUROLOGY", "PALLIATIVE MEDICINE",
+  "RESPIRATORY AND SLEEP MEDICINE", "RHEUMATOLOGY",
+  "REHABILITATION MEDICINE", "SEXUAL HEALTH MEDICINE",
+  "OCCUPATIONAL MEDICINE", "PUBLIC HEALTH MEDICINE"
+)
+
+RACP_PAEDS <- c(
+  "GENERAL PAEDIATRICS", "PAEDIATRIC CARDIOLOGY", "PAEDIATRIC CLINICAL GENETICS",
+  "PAEDIATRIC ENDOCRINOLOGY", "PAEDIATRIC GASTROENTEROLOGY AND HEPATOLOGY",
+  "PAEDIATRIC HAEMATOLOGY AND ONCOLOGY", "PAEDIATRIC IMMUNOLOGY AND ALLERGY",
+  "PAEDIATRIC INFECTIOUS DISEASES", "PAEDIATRIC NEPHROLOGY",
+  "PAEDIATRIC NEUROLOGY", "PAEDIATRIC RESPIRATORY AND SLEEP MEDICINE",
+  "PAEDIATRIC RHEUMATOLOGY", "PAEDIATRICS AND CHILD HEALTH"
+)
+
+ACEM    <- c("EMERGENCY MEDICINE")
+
+CICM    <- c("INTENSIVE CARE MEDICINE")
+
+ANZCA   <- c("ANAESTHESIA", "PAIN MEDICINE")
+
+NON_MEDICAL <- c(
+  "DIETETICS", "EXERCISE PHYSIOLOGY", "PARAMEDICINE",
+  "PHARMACY", "PSYCHOLOGY", "RADIOGRAPHY",
+  "SCIENTIST", "SOCIAL WORK", "SPEECH PATHOLOGY", "VETERINARY MEDICINE",
+  "NURSING", "OPTOMETRY OR ORTHOPTICS",
+  "PHYSIOTHERAPY OR OCCUPATIONAL THERAPY",
+  "DENTISTRY", "PODIATRY"
+)
+
+DIT   <- c("DOCTOR-IN-TRAINING")
+
+RANZCR <- c("NUCLEAR MEDICINE RADIOLOGY", "DIAGNOSTIC RADIOLOGY", "RADIATION ONCOLOGY")
+
+RCPA   <- c("PATHOLOGY")
+
+RACMA  <- c("MEDICAL ADMINISTRATION")
+
+ACSEP  <- c("SPORT AND EXERCISE MEDICINE")
+
+NON_CLIN <- c("NON-CLINICAL")
+
+RACGP_OR_ACRRM <- c("GENERAL PRACTICE")
+
+RACS <- c(
+  "CARDIOTHORACIC SURGERY", "GENERAL SURGERY", "NEUROSURGERY",
+  "ORAL AND MAXILLOFACIAL SURGERY", "ORTHOPAEDIC SURGERY",
+  "OTOLARYNGOLOGY - HEAD AND NECK SURGERY", "PAEDIATRIC SURGERY",
+  "PLASTIC SURGERY", "UROLOGY", "VASCULAR SURGERY"
+)
+
+RANZCP <- c("PSYCHIATRY")
+
+RANZCO <- c("OPHTHALMOLOGY")
+
+RANZCOG <- c("OBSTETRICS AND GYNAECOLOGY")
+
+ACD <- c("DERMATOLOGY")
+
+# Apply allocation to college groups
+payments <- payments %>%
+  mutate(
+    SPECIALITY_GROUP = case_when(
+      specialty %in% RACP_ADULT        ~ "RACP_ADULT",
+      specialty %in% RACP_PAEDS        ~ "RACP_PAEDS",
+      specialty %in% ACEM              ~ "ACEM",
+      specialty %in% CICM              ~ "CICM",
+      specialty %in% ANZCA             ~ "ANZCA",
+      specialty %in% NON_MEDICAL       ~ "NON_MEDICAL",
+      specialty %in% DIT               ~ "DIT",
+      specialty %in% RANZCR            ~ "RANZCR",
+      specialty %in% RCPA              ~ "RCPA",
+      specialty %in% RACMA             ~ "RACMA",
+      specialty %in% ACSEP             ~ "ACSEP",
+      specialty %in% NON_CLIN          ~ "NON_CLIN",
+      specialty %in% RACS              ~ "RACS",
+      specialty %in% RANZCP            ~ "RANZCP",
+      specialty %in% RANZCO            ~ "RANZCO",
+      specialty %in% RANZCOG           ~ "RANZCOG",
+      specialty %in% ACD               ~ "ACD",
+      specialty %in% RACGP_OR_ACRRM    ~ "RACGP_OR_ACRRM",
+      TRUE                             ~ "UNASSIGNED"
+    )
+  )
+
+```
+
+# Cohort Generated
+
+-   Included individuals had to be doctors with a specialist qualificationl
+
+```{r}
+
+# --- COHORT CREATION (DOCTORS ONLY) ------------------------------------------
+
+payments_doctor <- payments %>%
+  filter(profession == "Medical Professionals") %>%  
+  filter(SPECIALITY_GROUP != "NON_MEDICAL") %>%
+  filter(SPECIALITY_GROUP != "UNASSIGNED") %>%
+  filter(SPECIALITY_GROUP != "DIT")
+```
+
+# WPI Adjustment
+
+-   Payment amounts were indexed to the most recent period in the study
+
+-   The read_abs packages is used, the series used is Australian Public/Private WPI
+
+```{r}
+# Approximate event date as mid-point of period
+payments_doctor <- payments_doctor %>%
+  mutate(
+    start_raw = str_extract(period, "^[A-Za-z]+ \\d{4}"),
+    end_raw   = str_extract(period, "[A-Za-z]+ \\d{4}$"),
+    start     = dmy(paste0("01 ", start_raw)),
+    end       = dmy(paste0("01 ", end_raw)),
+    mid_date  = start + (end - start) / 2
+  ) %>%
+  select(-start_raw, -end_raw, -start, -end)
+
+# Load WPI series (ABS)
+wpi <- read_abs(series_id = "A2603609J") %>%
+  select(date, value) %>%
+  arrange(date)
+
+# Map each payment to nearest WPI quarter
+idx <- findInterval(payments_doctor$mid_date, wpi$date)
+
+payments_doctor$wpi_date <- wpi$date[idx]
+payments_doctor$wpi      <- wpi$value[idx]
+
+# Use latest WPI as base
+base_wpi <- max(payments_doctor$wpi, na.rm = TRUE)
+
+cols_to_std <- c("registration_fees", "travel_costs", "fees_for_service", "total_payment")
+
+payments_doctor <- payments_doctor %>%
+  mutate(
+    across(
+      all_of(cols_to_std),
+      ~ .x * (base_wpi / wpi),
+      .names = "{.col}_wpi_std"
+    )
+  )
+
+```
+
+# Table 1
+
+-   This is a college level summary of the data
+
+-   The total row and median_indi_payment + q1_total_payment + q3_total_payment is used for the median payment value figure in the paper.
+
+```{r}
+summary_tbl <- payments_doctor %>%
+  group_by(SPECIALITY_GROUP) %>%
+  summarise(
+    n_obs              = n(),
+    n_unique_hcps      = n_distinct(name, specialty),
+    n_unique_hcps_narm = n_distinct(name, specialty, na.rm = TRUE),
+    n_specialties      = n_distinct(specialty, na.rm = TRUE),
+    n_companies        = n_distinct(company, na.rm = TRUE),
+    n_services         = n_distinct(service, na.rm = TRUE),
+    n_events           = n_distinct(event, na.rm = TRUE),
+    n_payments         = n_distinct(payment_to, na.rm = TRUE),
+    total_payments     = sum(total_payment_wpi_std, na.rm = TRUE),
+    min_total_payment  = min(total_payment_wpi_std, na.rm = TRUE),
+    q1_total_payment   = unname(quantile(total_payment_wpi_std, 0.25, na.rm = TRUE)),
+    median_indi_payment= median(total_payment_wpi_std, na.rm = TRUE),
+    q3_total_payment   = unname(quantile(total_payment_wpi_std, 0.75, na.rm = TRUE)),
+    max_total_payment  = max(total_payment_wpi_std, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+total_row <- payments_doctor %>%
+  summarise(
+    SPECIALITY_GROUP    = "TOTAL",
+    n_obs               = n(),
+    n_unique_hcps       = n_distinct(name, specialty),
+    n_unique_hcps_narm  = n_distinct(name, specialty, na.rm = TRUE),
+    n_specialties       = n_distinct(specialty, na.rm = TRUE),
+    n_companies         = n_distinct(company, na.rm = TRUE),
+    n_services          = n_distinct(service, na.rm = TRUE),
+    n_events            = n_distinct(event, na.rm = TRUE),
+    n_payments          = n_distinct(payment_to, na.rm = TRUE),
+    total_payments      = sum(total_payment_wpi_std, na.rm = TRUE),
+    min_total_payment   = min(total_payment_wpi_std, na.rm = TRUE),
+    q1_total_payment    = unname(quantile(total_payment_wpi_std, 0.25, na.rm = TRUE)),
+    median_indi_payment = median(total_payment_wpi_std, na.rm = TRUE),
+    q3_total_payment    = unname(quantile(total_payment_wpi_std, 0.75, na.rm = TRUE)),
+    max_total_payment   = max(total_payment_wpi_std, na.rm = TRUE)
+  )
+
+final_tbl <- bind_rows(summary_tbl, total_row) %>%
+  arrange(desc(n_obs), SPECIALITY_GROUP) %>%
+  gt(rowname_col = "SPECIALITY_GROUP") %>%
+  fmt_number(columns = where(is.numeric), decimals = 0) %>%
+  tab_header(
+    title    = "Summary of Payments by Specialty Group",
+    subtitle = "All amounts in AUD"
+  )
+
+# View GT table 1
+final_tbl
+
+```
+
+# Table 2
+
+-   AHPRA counts of specialists in their 2023/2024 report is used to derive a denominator for each college group.
+
+-   The numerator is the number of individual specialists in the sutdy period reporting a payment in that college group.
+
+-   The Wilson 95% CI is then generated.
+
+```{r}
+# Load AHPRA denominators
+ahpra_xlsx <- "ahpra_202324.xlsx"
+
+normalise_up <- \(x) x |>
+  str_replace_all("[\u2013\u2014]", "-") |>
+  str_squish() |>
+  str_to_upper()
+
+r9 <- read_excel(
+  ahpra_xlsx,
+  sheet = "R9",
+  skip  = 2,
+  .name_repair = "universal"
+) %>%
+  transmute(
+    PROF_UP        = normalise_up(Profession),
+    Total.2023.24
+  ) %>%
+  filter(!is.na(PROF_UP), !is.na(Total.2023.24))
+
+# Numerators: unique doctors with ≥1 payment
+numerators <- payments_doctor %>%
+  semi_join(r9, by = c("specialty" = "PROF_UP")) %>%
+  summarise(
+    Unique_with_payment = n_distinct(name),
+    .by = specialty
+  )
+
+# Merge with denominators
+base <- numerators %>%
+  left_join(r9, by = c("specialty" = "PROF_UP")) %>%
+  transmute(
+    specialty,
+    Unique_with_payment,
+    Denominator_2023_24 = Total.2023.24,
+    Proportion_pct      = round(100 * Unique_with_payment / Denominator_2023_24, 1)
+  )
+
+# Allocate to college groups (same logic as above)
+base <- base %>%
+  mutate(
+    SPECIALITY_GROUP = case_when(
+      specialty %in% RACP_ADULT        ~ "RACP_ADULT",
+      specialty %in% RACP_PAEDS        ~ "RACP_PAEDS",
+      specialty %in% ACEM              ~ "ACEM",
+      specialty %in% CICM              ~ "CICM",
+      specialty %in% ANZCA             ~ "ANZCA",
+      specialty %in% NON_MEDICAL       ~ "NON_MEDICAL",
+      specialty %in% DIT               ~ "DIT",
+      specialty %in% RANZCR            ~ "RANZCR",
+      specialty %in% RCPA              ~ "RCPA",
+      specialty %in% RACMA             ~ "RACMA",
+      specialty %in% ACSEP             ~ "ACSEP",
+      specialty %in% NON_CLIN          ~ "NON_CLIN",
+      specialty %in% RACS              ~ "RACS",
+      specialty %in% RANZCP            ~ "RANZCP",
+      specialty %in% RANZCO            ~ "RANZCO",
+      specialty %in% RANZCOG           ~ "RANZCOG",
+      specialty %in% ACD               ~ "ACD",
+      specialty %in% RACGP_OR_ACRRM    ~ "RACGP_OR_ACRRM",
+      TRUE                             ~ "UNASSIGNED"
+    )
+  )
+
+# Wilson CI helper
+add_wilson <- function(df) {
+  ci <- binom::binom.confint(
+    x       = df$unique_with_payment,
+    n       = df$denom_23_24,
+    methods = "wilson"
+  )
+
+  df %>%
+    mutate(
+      ci_lower_pct = round(100 * ci$lower, 1),
+      ci_upper_pct = round(100 * ci$upper, 1),
+      prop_with_ci = sprintf(
+        "%.1f%% (%.1f–%.1f)",
+        prop_pct, ci_lower_pct, ci_upper_pct
+      )
+    )
+}
+
+# College-level collapsed numerators/denominators
+df_collapsed_college <- base %>%
+  group_by(SPECIALITY_GROUP) %>%
+  summarise(
+    unique_with_payment = sum(Unique_with_payment, na.rm = TRUE),
+    denom_23_24         = sum(Denominator_2023_24, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    prop_pct = 100 * unique_with_payment / denom_23_24
+  ) %>%
+  add_wilson()
+
+# Total row (all colleges)
+df_collapsed_college_total <- base %>%
+  summarise(
+    SPECIALITY_GROUP    = "TOTAL",
+    unique_with_payment = sum(Unique_with_payment, na.rm = TRUE),
+    denom_23_24         = sum(Denominator_2023_24, na.rm = TRUE),
+    .groups             = "drop"
+  ) %>%
+  mutate(
+    prop_pct = 100 * unique_with_payment / denom_23_24
+  ) %>%
+  add_wilson()
+
+# Bind together
+final_tbl_2 <- bind_rows(
+  df_collapsed_college,
+  df_collapsed_college_total
+) %>%
+  arrange(desc(prop_pct), SPECIALITY_GROUP)
+
+
+#Generate table 2
+table_2_view <- final_tbl_2 %>%
+  arrange(desc(prop_pct), SPECIALITY_GROUP) %>%
+  gt(rowname_col = "SPECIALITY_GROUP") %>%
+  fmt_number(columns = where(is.numeric), decimals = 1) %>%
+  tab_header(
+    title    = "Proportion of fellows receiving a payment by college",
+  )
+
+# View GT table 2
+table_2_view
+
+```
+
+# Figure 1
+
+-   This is the figure in the paper.
+
+-   The proportion of doctors receiving a payment with 95% CI is shown.
+
+-   The dotted line is the overall proportion receiving a payment.
+
+```{r}
+figure1 <- final_tbl_2 %>%
+  mutate(
+    SPECIALITY_GROUP = case_when(
+      SPECIALITY_GROUP == "RACP_ADULT"       ~ "RACP (Adult)",
+      SPECIALITY_GROUP == "RACP_PAEDS"       ~ "RACP (Paediatric)",
+      SPECIALITY_GROUP == "RACGP_OR_ACRRM"   ~ "RACGP/ACCRM",
+      TRUE                                   ~ SPECIALITY_GROUP
+    )
+  ) %>%
+  mutate(
+    SPECIALITY_GROUP = reorder(SPECIALITY_GROUP, prop_pct)
+  ) %>%
+  filter(SPECIALITY_GROUP != "TOTAL") %>%
+  ggplot(aes(x = SPECIALITY_GROUP, y = prop_pct)) +
+  geom_point() +
+  geom_errorbar(
+    aes(ymin = ci_lower_pct, ymax = ci_upper_pct),
+    width     = 0.2,
+    linewidth = 0.6,
+    colour    = "black"
+  ) +
+  geom_text(
+    aes(label = paste0(round(prop_pct, 1), "%")),
+    vjust  = 1.5,
+    size   = 6,
+    colour = "black"
+  ) +
+  geom_hline(
+    yintercept = 16.6,
+    linetype   = "dotted",
+    linewidth  = 0.6
+  ) +
+  coord_flip(clip = "off") +
+  scale_y_continuous(
+    labels = function(x) paste0(x, "%"),
+    limits = c(0, 100)
+  ) +
+  labs(
+    x = NULL,
+    y = "Proportion with ≥1 payment"
+  ) +
+  theme_bw(base_family = "Montserrat") +
+  theme(
+    axis.text.y  = element_text(size = 16),
+    axis.text.x  = element_text(size = 17),
+    axis.title.x = element_text(size = 17, face = "bold"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor   = element_blank(),
+    legend.position    = "none"
+  )
+
+figure1
+```
