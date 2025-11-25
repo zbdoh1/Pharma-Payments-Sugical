@@ -14,9 +14,9 @@ Data on payments to health professionals from November 2019 to October 2024 were
 To assign each doctor to a specialty, a manual search of the AHPRA Register of Practitioners was performed. (3) When an exact match was unclear, for example, for common names shared by multiple clinicians, additional verification was undertaken using hospital or clinic websites, conference speaker biographies, and other publicly available sources. Some practitioners held more than one specialty; to avoid double-counting, each individual was assigned a single primary specialty, determined through targeted online searches. Further details on database construction are available elsewhere. (4)
 
 Each clinician’s primary specialty was then mapped to the relevant specialist college using the list of approved programs of study from AHPRA. (5) For example, a practitioner registered as a Specialist in Anaesthesia was assigned to the Australian and New Zealand College of Anaesthetists. The full list of specialties and corresponding colleges is provided in Table S1. Some specialties require dual fellowship; for the purposes of this analysis, the following allocations were applied:
-Haematology - RACP
-Microbiology - RACP
-Immunology/Allergy - RACP
+- Haematology - RACP
+- Microbiology - RACP
+- Immunology/Allergy - RACP
 
 For each specialty group, we estimated pharmaceutical company reach (the proportion of clinicians who received ≥1 payment) by linking payment data to AHPRA 2023/24 specialist workforce counts. (5) The number of registered specialists at the end of the study period was used as the denominator, providing a conservative estimate of payment reach.
 Formal data analysis was undertaken by M.F. and Z.D. using R version 4.5.0, with independent checking by T.L. Visualisation was completed by Z.D. The released analysis dataset excludes practitioner address fields to protect privacy, as some individuals listed personal rather than professional addresses.
