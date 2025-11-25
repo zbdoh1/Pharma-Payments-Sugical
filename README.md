@@ -1,6 +1,7 @@
 # Pharma-Payments-by-College 
 
 **Supplementary Methods**
+
 Data on payments to health professionals from November 2019 to October 2024 were downloaded from the centralised Medicines Australia repository. (1) These reports include individual payment records with fields for company name, practitioner name, healthcare professional type, practice address, service type, event type, payment recipient, registration fees, travel costs, fees for service, and reporting period. These data were merged with legacy reports (October 2015–October 2019) obtained from the University of Sydney repository. (2)
 
 To assign each doctor to a specialty, a manual search of the AHPRA Register of Practitioners was performed. (3) When an exact match was unclear, for example, for common names shared by multiple clinicians, additional verification was undertaken using hospital or clinic websites, conference speaker biographies, and other publicly available sources. Some practitioners held more than one specialty; to avoid double-counting, each individual was assigned a single primary specialty, determined through targeted online searches. Further details on database construction are available elsewhere. (4)
