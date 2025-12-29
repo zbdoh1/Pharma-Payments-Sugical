@@ -9,8 +9,9 @@
 #  - Allocates specialties to college groups
 #  - WPI-adjusts payment amounts
 #  - Produces:
-#      * Table 1: Summary of payments by specialty group
-#      * Figure 1: Proportion of fellows receiving ≥1 payment by college
+#      * Table E1: Summary of payments by specialty group
+#      * Table E2: Proportion of fellows receiving ≥1 payment by college (paragraph 1 values from here).
+#      * Figure 1: Proportion with 95% CI receiving ≥1 payment by college & speciality (RACS only). 
 # -------------------------------------------------------------------
 
 # --- LOAD PACKAGES & DATA ----------------------------------------------------
@@ -560,4 +561,5 @@ final_viz <- p_left_updated + p_right_updated +
 final_viz
 
 R.version
+
 
